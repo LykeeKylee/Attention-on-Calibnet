@@ -9,12 +9,31 @@ from common.cnn_utils_res import *
 import common.resnet_rgb_model as model
 import common.resnet_depth_model as model_depth
 import tqdm
+from common.Lie_functions import *
+import common.all_transformer as at3
 
 batch_size = config.net_params['batch_size']
 current_epoch = config.net_params['load_epoch']
 IMG_HT = config.depth_img_params['IMG_HT']
 IMG_WDT = config.depth_img_params['IMG_WDT']
+time_step = config.net_params['time_step']
 
+fx = config.camera_params['fx']
+fy = config.camera_params['fy']
+cx = config.camera_params['cx']
+cy = config.camera_params['cy']
+
+fx_scaled = 2*(fx)/np.float32(IMG_WDT)              # focal length x scaled for -1 to 1 range
+fy_scaled = 2*(fy)/np.float32(IMG_HT)               # focal length y scaled for -1 to 1 range
+cx_scaled = -1 + 2*(cx - 1.0)/np.float32(IMG_WDT)   # optical center x scaled for -1 to 1 range
+cy_scaled = -1 + 2*(cy - 1.0)/np.float32(IMG_HT)    # optical center y scaled for -1 to 1 range
+
+K_mat_scaled = np.array([[fx_scaled,  0.0, cx_scaled],
+                         [0.0, fy_scaled,  cy_scaled],
+                         [0.0, 0.0, 1.0]], dtype = np.float32)
+
+K_final = tf.constant(K_mat_scaled, dtype = tf.float32)
+small_transform = tf.constant(config.camera_params['cam_transform_02_inv'], dtype = tf.float32)
 
 class Nets:
     def __init__(self, cam, velo, rgb_phase, depth_phase, fc_keep_prob):
@@ -84,12 +103,12 @@ class Nets:
         nonlocal_block_2 = self.NonLocalBlock(layer9, 256, scope="nonlocal_block_2")
         return nonlocal_block_2, summaries
 
-    def End_Net_Output(self):
+    def End_Net_Output(self, cam, velo):
         """
         Computation Graph
         """
-        RGB_Net_obj = model.Resnet(self.cam, self.rgb_pahse)
-        Depth_Net_obj = model_depth.Depthnet(self.velo, self.depth_phase)
+        RGB_Net_obj = model.Resnet(cam, self.rgb_pahse)
+        Depth_Net_obj = model_depth.Depthnet(velo, self.depth_phase)
         with tf.variable_scope('ResNet_RGB'):
             with tf.device('/device:GPU:0'):
                 output_rgb = RGB_Net_obj.Net()
@@ -103,8 +122,8 @@ class Nets:
 
         return combine_output, summaries
 
-    def build(self):
-        output, summaries = self.End_Net_Output()
+    def part_build(self, cam, velo):
+        output, summaries = self.End_Net_Output(cam, velo)
         with tf.name_scope('predict_transform_vector'):
             W_tr = weight_variable([1, 2, 256, 128], "W_tr")
             conv_tr = conv2d_batchnorm_init(output, W_tr, name="conv_tr", phase=self.depth_phase,
@@ -135,6 +154,34 @@ class Nets:
 
         return result, summaries
 
+    def build(self):
+        cam = tf.reshape(self.cam, (batch_size, time_step, IMG_HT, IMG_WDT, 3))
+        velo = tf.reshape(self.velo, (batch_size, time_step, IMG_HT, IMG_WDT, 1))
+        cam_1, cam_2, cam_3 = tf.unstack(cam, axis=1)
+        velo_1, velo_2, velo_3 = tf.unstack(velo, axis=1)
 
+        vector_1, summaries_1 = self.part_build(cam_1, velo_1)
+        transform_1 = tf.map_fn(lambda x: exponential_map_single(vector_1[x]),
+                                         elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+        print(transform_1.shape)
+        velo_2, _ = tf.map_fn(
+            lambda x: at3._simple_transformer(velo_2[x, :, :, 0] * 40.0 + 40.0, transform_1[x], K_final,
+                                              small_transform), elems=tf.range(0, batch_size, 1),
+            dtype=(tf.float32, tf.float32))
 
+        vector_2, summaries_2 = self.part_build(cam_2, velo_2)
+        transform_2 = tf.map_fn(lambda x: exponential_map_single(vector_2[x]),
+                                elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+        transform_2 = transform_2 * transform_1
+        velo_3, _ = tf.map_fn(
+            lambda x: at3._simple_transformer(velo_3[x, :, :, 0] * 40.0 + 40.0, transform_2[x], K_final,
+                                              small_transform), elems=tf.range(0, batch_size, 1),
+            dtype=(tf.float32, tf.float32))
 
+        vector_3, summaries_3 = self.part_build(cam_3, velo_3)
+        transform_3 = tf.map_fn(lambda x: exponential_map_single(vector_3[x]),
+                                elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+        transform_3 = transform_3 * transform_2
+
+        transform_output = tf.stack([transform_1, transform_2, transform_3], axis=1)
+        return transform_output, summaries_1 + summaries_2 + summaries_3
