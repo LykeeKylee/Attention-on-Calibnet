@@ -1,4 +1,4 @@
-import numpy as np
-import tensorflow as tf
-
-K = np.array([9.597910e+02,0.000000e+00,6.960217e+02,0.000000e+00,9.569251e+02,2.241806e+02,0.000000e+00,0.000000e+00,1.000000e+00])
+total = 29810
+for i in range(6000, 7000):
+    if (total - i) % 18 == 0 and i % 18 == 0:
+        print(i)

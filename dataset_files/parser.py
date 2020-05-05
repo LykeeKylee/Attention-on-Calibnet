@@ -10,7 +10,7 @@ import argparse
 
 # dataset_path = args.path
 dataset_path = "./dataset_files/dataset/2011_09_26/"
-time_step = 1
+time_step = 3
 
 #Picking up all sync folders
 folder_names = ns(glob.glob(dataset_path +"*_sync" + os.path.sep))
@@ -43,6 +43,10 @@ for fn in folder_names:
 
     dataset = np.hstack((file_names_source, file_names_target, img_source, img_target, transforms_list))
     # dataset = padding(dataset, time_step)
+    h = np.shape(dataset)[0]
+    while h % 3 != 0:
+        h -= 1
+    dataset = dataset[0:h, :]
     print(dataset.shape)
 
     dataset_array = np.vstack((dataset_array, dataset))
@@ -59,6 +63,10 @@ for fn in folder_names:
 
     dataset_2 = np.hstack((file_names_source_2, file_names_target_2, img_source, img_target, transforms_list_2))
     # dataset_2 = padding(dataset_2, time_step)
+    h = np.shape(dataset_2)[0]
+    while h % 3 != 0:
+        h -= 1
+    dataset_2 = dataset_2[0:h, :]
     print(dataset_2.shape)
 
     dataset_array_2 = np.vstack((dataset_array_2, dataset_2))
@@ -70,18 +78,19 @@ dataset_array = dataset_array[1:]
 dataset_array_2 = dataset_array_2[1:]
 
 final_array = np.vstack((dataset_array, dataset_array_2))
-np.random.shuffle(final_array)
+# np.random.shuffle(final_array)
+final_array = final_array[0:29790, :]
+r = final_array.shape[0]
 print(final_array.shape)
-# r = final_array.shape[0]
-# print(final_array.shape)
-# final_array = np.reshape(final_array, (int(r / time_step), time_step, 20))[0:int(30000 / time_step)]
-# print(final_array.shape)
-#
-# train = int(24000 / time_step)
-# val = int(3000 / time_step)
-# test = int(3000 / time_step)
+final_array = np.reshape(final_array, (int(r / time_step), time_step, 20))[0:int(30000 / time_step)]
+print(final_array.shape)
+np.random.shuffle(final_array)
+final_array = np.reshape(final_array, (r, 20))
+# train = int(23400 / time_step)
+# val = int(3150 / time_step)
+# test = int(3150 / time_step)
 # np.random.shuffle(final_array[0:train])
 # np.random.shuffle(final_array[train:train + val])
 # np.random.shuffle(final_array[train + val:])
 
-np.savetxt("./dataset_files/parsed_set.txt", final_array[:29800], fmt = "%s", delimiter=' ')
+np.savetxt("./dataset_files/parsed_set.txt", final_array[:], fmt = "%s", delimiter=' ')

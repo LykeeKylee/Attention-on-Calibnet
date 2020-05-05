@@ -15,8 +15,8 @@ import time
 import transform_functions
 
 
-_ALPHA_CONST = 1.0
-_BETA_CONST = 0.15
+_ALPHA_CONST = 1.1
+_BETA_CONST = 1.6
 IMG_HT = config.depth_img_params['IMG_HT']
 IMG_WDT = config.depth_img_params['IMG_WDT']
 batch_size = config.net_params['batch_size']

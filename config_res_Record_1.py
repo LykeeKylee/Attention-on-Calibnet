@@ -74,19 +74,19 @@ camera_params = dict(
 # 	load_epoch = 0
 # 	)
 net_params = dict(
-    batch_size= 6,
-    total_frames=29790,
-    total_frames_train=23790,
-    total_frames_validation=3000,
-    total_frames_test=3000,
+    batch_size= 20,
+    total_frames=29800,
+    total_frames_train=22000,
+    total_frames_validation=3900,
+    total_frames_test=3900,
     partition_limit=200,
-    time_step=3,
+    time_step=1,
     lstm_num=2,
     lstm_hidden_size=512,
     epochs=23,
-    learning_rate=1e-4,
+    learning_rate=1e-8,
     beta1=0.9,
-    load_epoch=0
+    load_epoch=19
 )
 # 18 16
 # conda activate TensorTorch
