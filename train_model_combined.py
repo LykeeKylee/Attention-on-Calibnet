@@ -15,8 +15,8 @@ import time
 import transform_functions
 
 
-_ALPHA_CONST = 1.0
-_BETA_CONST = 1.0
+_ALPHA_CONST = 1.1
+_BETA_CONST = 1.6
 IMG_HT = config.depth_img_params['IMG_HT']
 IMG_WDT = config.depth_img_params['IMG_WDT']
 batch_size = config.net_params['batch_size']
@@ -98,12 +98,14 @@ validation_loss = _ALPHA_CONST * predicted_loss_validation + _BETA_CONST * cloud
 # cloud_loss_test = model_utils.get_emd_loss(cloud_pred, cloud_exp)
 # test_loss = _ALPHA_CONST * predicted_loss_test + _BETA_CONST * cloud_loss_test
 
-# trainalbe_var = [t for t in tf.trainable_variables() if t.name.startswith('lstm_output')]
-# print(trainalbe_var)
+# non_freeze = [t for t in tf.trainable_variables() if (t.name.startswith('weightW_tr') or t.name.startswith('BatchNorm') or t.name.startswith('nonlocal_block3') or t.name.startswith('weight_11')) and not t.name.startswith('BatchNorm_1')]
+non_freeze = [t for t in tf.trainable_variables() if (t.name.startswith('weightW_ro') or t.name.startswith('BatchNorm_1') or t.name.startswith('nonlocal_block4') or t.name.startswith('weight_112'))]
+for t in non_freeze:
+    print(t.name)
 update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 with tf.control_dependencies(update_ops):
     train_step = tf.train.AdamOptimizer(learning_rate = config.net_params['learning_rate'],
-                                    beta1 = config.net_params['beta1']).minimize(train_loss)
+                                    beta1 = config.net_params['beta1']).minimize(_ALPHA_CONST * photometric_loss, var_list=non_freeze)
 
 training_summary_1 = tf.summary.scalar('Train_photometric_loss', photometric_loss)
 training_summary_2 = tf.summary.scalar('Train_cloud_loss', cloud_loss)

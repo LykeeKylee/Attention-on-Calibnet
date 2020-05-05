@@ -18,44 +18,6 @@ def for_rotation(Old_transform):
     return rots_T
 
 
-# def exponential_map_single(vec):
-#
-#     "Exponential Map Operation. Decoupled for SO(3) and translation t"
-#
-#     with tf.name_scope("Exponential_map"):
-#
-#         u = vec[:3]
-#         omega = vec[3:]
-#
-#         theta = tf.sqrt(omega[0]*omega[0] + omega[1]*omega[1] + omega[2]*omega[2])
-#
-#         omega_cross = tf.stack([0.0, -omega[2], omega[1], omega[2], 0.0, -omega[0], -omega[1], omega[0], 0.0])
-#         omega_cross = tf.reshape(omega_cross, [3,3])
-#
-#         #Taylor's approximation for A,B and C not being used currently, approximations preferable for low values of theta
-#
-#         # A = 1.0 - (tf.pow(theta,2)/factorial(3.0)) + (tf.pow(theta, 4)/factorial(5.0))
-#         # B = 1.0/factorial(2.0) - (tf.pow(theta,2)/factorial(4.0)) + (tf.pow(theta, 4)/factorial(6.0))
-#         # C = 1.0/factorial(3.0) - (tf.pow(theta,2)/factorial(5.0)) + (tf.pow(theta, 4)/factorial(7.0))
-#
-#         A = tf.sin(theta)/theta
-#
-#         B = (1.0 - tf.cos(theta))/(tf.pow(theta,2))
-#
-#         C = (1.0 - A)/(tf.pow(theta,2))
-#
-#         omega_cross_square = tf.matmul(omega_cross, omega_cross)
-#
-#         R =tf.eye(3,3) + A*omega_cross + B*omega_cross_square
-#
-#         V = tf.eye(3,3) + B*omega_cross + C*omega_cross_square
-#         Vu = tf.matmul(V,tf.expand_dims(u,1))
-#
-#         T = tf.concat([R, Vu], 1)
-#
-#
-#         return T
-
 def exponential_map_single(vec):
 
     "Exponential Map Operation. Decoupled for SO(3) and translation t"
@@ -66,8 +28,6 @@ def exponential_map_single(vec):
         omega = vec[3:]
 
         theta = tf.sqrt(omega[0]*omega[0] + omega[1]*omega[1] + omega[2]*omega[2])
-
-        omega = tf.divide(omega, theta)
 
         omega_cross = tf.stack([0.0, -omega[2], omega[1], omega[2], 0.0, -omega[0], -omega[1], omega[0], 0.0])
         omega_cross = tf.reshape(omega_cross, [3,3])
@@ -80,21 +40,61 @@ def exponential_map_single(vec):
 
         A = tf.sin(theta)/theta
 
-        B = (1.0 - tf.cos(theta))/theta
+        B = (1.0 - tf.cos(theta))/(tf.pow(theta,2))
 
-        C = 1.0 - tf.sin(theta)/theta
+        C = (1.0 - A)/(tf.pow(theta,2))
 
         omega_cross_square = tf.matmul(omega_cross, omega_cross)
 
-        R =tf.cos(theta) * tf.eye(3,3) + tf.sin(theta)*omega_cross + (1 - tf.cos(theta))*omega_cross_square
+        R =tf.eye(3,3) + A*omega_cross + B*omega_cross_square
 
-        V = A*tf.eye(3,3) + B*omega_cross + C*omega_cross_square
+        V = tf.eye(3,3) + B*omega_cross + C*omega_cross_square
         Vu = tf.matmul(V,tf.expand_dims(u,1))
 
         T = tf.concat([R, Vu], 1)
 
 
         return T
+
+# def exponential_map_single(vec):
+#
+#     "Exponential Map Operation. Decoupled for SO(3) and translation t"
+#
+#     with tf.name_scope("Exponential_map"):
+#
+#         u = vec[:3]
+#         omega = vec[3:]
+#
+#         theta = tf.sqrt(omega[0]*omega[0] + omega[1]*omega[1] + omega[2]*omega[2])
+#
+#         omega = tf.divide(omega, theta)
+#
+#         omega_cross = tf.stack([0.0, -omega[2], omega[1], omega[2], 0.0, -omega[0], -omega[1], omega[0], 0.0])
+#         omega_cross = tf.reshape(omega_cross, [3,3])
+#
+#         #Taylor's approximation for A,B and C not being used currently, approximations preferable for low values of theta
+#
+#         # A = 1.0 - (tf.pow(theta,2)/factorial(3.0)) + (tf.pow(theta, 4)/factorial(5.0))
+#         # B = 1.0/factorial(2.0) - (tf.pow(theta,2)/factorial(4.0)) + (tf.pow(theta, 4)/factorial(6.0))
+#         # C = 1.0/factorial(3.0) - (tf.pow(theta,2)/factorial(5.0)) + (tf.pow(theta, 4)/factorial(7.0))
+#
+#         A = tf.sin(theta)/theta
+#
+#         B = (1.0 - tf.cos(theta))/theta
+#
+#         C = 1.0 - tf.sin(theta)/theta
+#
+#         omega_cross_square = tf.matmul(omega_cross, omega_cross)
+#
+#         R =tf.cos(theta) * tf.eye(3,3) + tf.sin(theta)*omega_cross + (1 - tf.cos(theta))*omega_cross_square
+#
+#         V = A*tf.eye(3,3) + B*omega_cross + C*omega_cross_square
+#         Vu = tf.matmul(V,tf.expand_dims(u,1))
+#
+#         T = tf.concat([R, Vu], 1)
+#
+#
+#         return T
 
 def transforms_mul(T1, T2):
 

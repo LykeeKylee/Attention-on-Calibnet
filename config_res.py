@@ -83,10 +83,11 @@ net_params = dict(
     time_step=1,
     lstm_num=2,
     lstm_hidden_size=512,
-    epochs=2,
-    learning_rate=1e-3,
+    epochs=23,
+    learning_rate=1e-8,
     beta1=0.9,
-    load_epoch=0
+    load_epoch=19
 )
 # 18 16
+# conda activate TensorTorch
 # tensorboard --logdir=/home/lykee/Junior/Study/deepvo_CalibNet/CalibNet/CalibNet_master/code/logs_simple_transformer
