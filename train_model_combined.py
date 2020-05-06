@@ -69,7 +69,7 @@ predicted_transforms, weight_summaries = net.build()
 # se(3) -> SE(3) for the whole batch
 # output_vectors_ft = tf.map_fn(lambda x:dmap.RV2RM(expected_transforms[x], output_vectors[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
 # output_vectors_ft = tf.reshape(output_vectors_ft, shape=(batch_size, 6))
-predicted_transforms = tf.map_fn(lambda x:exponential_map_single(output_vectors[x]), elems=tf.range(0, batch_size * time_step, 1), dtype=tf.float32)
+# predicted_transforms = tf.map_fn(lambda x:exponential_map_single(output_vectors[x]), elems=tf.range(0, batch_size * time_step, 1), dtype=tf.float32)
 
 # predicted_transforms = tf.concat([expected_transforms[:, :3, :3], tf.reshape(output_vectors_ft[:, 3:], shape=[batch_size, 3, 1])], axis=-1)
 

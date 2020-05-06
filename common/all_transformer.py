@@ -20,6 +20,18 @@ def _simple_transformer(depth_map, t_mat, k_mat, small_transform):
     return _bilinear_sampling(transformed_depth_map, x_all, y_all), sparse_cloud
 
 
+def calib_depth(depth_map, calib_pose, p_rect, scale=2): #, cam_pose
+    """
+  在迭代校准时使用
+    """
+    # p_rect_rad = tf.matrix_inverse(p_rect_radni)
+    batch_grids_depth, transformed_depth_map, _ = _3D_meshgrid_batchwise_diff(depth_map, calib_pose, p_rect, scale)
+
+    calib_depth_map = _bilinear_sampling(transformed_depth_map, batch_grids_depth)
+
+    return calib_depth_map
+
+
 def sparsify_cloud(S):
 
     """

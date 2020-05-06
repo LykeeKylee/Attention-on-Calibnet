@@ -10,7 +10,7 @@ import common.resnet_rgb_model as model
 import common.resnet_depth_model as model_depth
 import tqdm
 from common.Lie_functions import *
-import common.all_transformer as at3
+from common import all_transformer as at3
 
 batch_size = config.net_params['batch_size']
 current_epoch = config.net_params['load_epoch']
