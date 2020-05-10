@@ -15,8 +15,8 @@ import time
 import transform_functions
 
 
-_ALPHA_CONST = 1.1
-_BETA_CONST = 1.6
+_ALPHA_CONST = 1.0
+_BETA_CONST = 1.7
 IMG_HT = config.depth_img_params['IMG_HT']
 IMG_WDT = config.depth_img_params['IMG_WDT']
 batch_size = config.net_params['batch_size']
@@ -70,7 +70,7 @@ output_vectors, weight_summaries = net.build()
 # output_vectors_ft = tf.reshape(output_vectors_ft, shape=(batch_size, 6))
 predicted_transforms = tf.map_fn(lambda x:exponential_map_single(output_vectors[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
 
-# predicted_transforms = tf.concat([expected_transforms[:, :3, :3], tf.reshape(output_vectors_ft[:, 3:], shape=[batch_size, 3, 1])], axis=-1)
+# predicted_transforms = tf.concat([expected_transforms[:, :3, :3], tf.reshape(predicted_transforms[:, :3, 3], shape=[batch_size, 3, 1])], axis=-1)
 
 # transforms depth maps by the predicted transformation
 depth_maps_predicted, cloud_pred = tf.map_fn(lambda x:at3._simple_transformer(X2_pooled[x,:,:,0]*40.0 + 40.0, predicted_transforms[x], K_final, small_transform), elems = tf.range(0, batch_size, 1), dtype = (tf.float32, tf.float32))
@@ -99,13 +99,14 @@ validation_loss = _ALPHA_CONST * predicted_loss_validation + _BETA_CONST * cloud
 # test_loss = _ALPHA_CONST * predicted_loss_test + _BETA_CONST * cloud_loss_test
 
 # non_freeze = [t for t in tf.trainable_variables() if (t.name.startswith('weightW_tr') or t.name.startswith('BatchNorm') or t.name.startswith('nonlocal_block3') or t.name.startswith('weight_11')) and not t.name.startswith('BatchNorm_1')]
-non_freeze = [t for t in tf.trainable_variables() if (t.name.startswith('weightW_ro') or t.name.startswith('BatchNorm_1') or t.name.startswith('nonlocal_block4') or t.name.startswith('weight_112'))]
+# non_freeze = [t for t in tf.trainable_variables() if (t.name.startswith('weightW_ro') or t.name.startswith('BatchNorm_1') or t.name.startswith('nonlocal_block4') or t.name.startswith('weight_112'))]
+non_freeze = tf.trainable_variables()
 for t in non_freeze:
     print(t.name)
 update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 with tf.control_dependencies(update_ops):
     train_step = tf.train.AdamOptimizer(learning_rate = config.net_params['learning_rate'],
-                                    beta1 = config.net_params['beta1']).minimize(_ALPHA_CONST * photometric_loss, var_list=non_freeze)
+                                    beta1 = config.net_params['beta1']).minimize(train_loss, var_list=non_freeze)
 
 training_summary_1 = tf.summary.scalar('Train_photometric_loss', photometric_loss)
 training_summary_2 = tf.summary.scalar('Train_cloud_loss', cloud_loss)
@@ -121,7 +122,7 @@ merge_train = tf.summary.merge([training_summary_1] + [training_summary_2] + [tr
 merge_val = tf.summary.merge([validation_summary_1] + [validation_summary_2] + [validation_summary_3])
 # merge_test = tf.summary.merge([test_summary_1] + [test_summary_2] + [test_summary_3])
 
-saver = tf.train.Saver()
+saver = tf.train.Saver(var_list=tf.all_variables())
 
 # tensorflow gpu configuration. Not to be confused with network configuration file
 

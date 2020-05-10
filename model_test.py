@@ -101,7 +101,7 @@ test_summary_3 = tf.summary.scalar('Test_loss', test_loss)
 
 merge_test = tf.summary.merge([test_summary_1] + [test_summary_2] + [test_summary_3])
 
-saver = tf.train.Saver()
+saver = tf.train.Saver(tf.all_variables())
 
 # tensorflow gpu configuration. Not to be confused with network configuration file
 
@@ -146,7 +146,7 @@ with tf.Session(config = config_tf) as sess:
             # writer.add_summary(outputs[4], total_iterations_test)
             total_iterations_test+=1
 
-            print('Time: %s     Current Epoch: %d     Current Iteration of Test: %d' % (time.strftime("%Y-%m-%d %H:%M:%S",time.localtime()), 0, total_iterations_test))
+            print('Time: %s     Current Iteration of Test: %d' % (time.strftime("%Y-%m-%d %H:%M:%S",time.localtime()), total_iterations_test))
             print('Loss: %f' % (photo_loss * _ALPHA_CONST + outputs[5] * _BETA_CONST))
             print('Photometric Loss: %f %f\tCloud Loss: %f %f' % (photo_loss, _ALPHA_CONST * photo_loss, outputs[5], _BETA_CONST * outputs[5]))
 
@@ -178,7 +178,8 @@ with tf.Session(config = config_tf) as sess:
 
                 random_disp = np.random.randint(batch_size)
                 dmap_rgb = transform_functions.dmap_rgb(source_img_b[random_disp], dmaps_pred[random_disp])
+                dmap_rgb2 = transform_functions.dmap_rgb(source_img_b[random_disp], dmaps_exp[random_disp])
 
-                cv.imwrite(config.paths['test_imgs_path'] + "/test_%d_save_%d.png"%(0, total_iterations_test), dmap_rgb)
+                cv.imwrite(config.paths['test_imgs_path'] + "/test_%d_save_%d.png"%(0, total_iterations_test), np.vstack((dmap_rgb, dmap_rgb2)))
     print('final_translation_error(X Y Z): %fcm %fcm %fcm %fcm' % (np.average(x), np.average(y_), np.average(z), (np.average(x) + np.average(y_) + np.average(z)) / 3))
     print('final_rotation_error(yaw pitch roll): %f° %f° %f° %f°' % (np.average(y), np.average(p), np.average(r), (np.average(y) + np.average(p) + np.average(r)) / 3))
