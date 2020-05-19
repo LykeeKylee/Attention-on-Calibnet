@@ -83,10 +83,10 @@ net_params = dict(
     time_step=1,
     lstm_num=2,
     lstm_hidden_size=512,
-    epochs=23,
-    learning_rate=1e-8,
+    epochs=5,
+    learning_rate=7e-5,
     beta1=0.9,
-    load_epoch=19
+    load_epoch=1
 )
 # 18 16
 # conda activate TensorTorch

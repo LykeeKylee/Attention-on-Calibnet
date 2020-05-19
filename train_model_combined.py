@@ -16,7 +16,10 @@ import transform_functions
 
 
 _ALPHA_CONST = 1.0
-_BETA_CONST = 1.7
+_BETA_CONST = 1.0
+_THETA_CONST = 1.0
+_GAMMA_CONST = 100.0
+_EPSILON_CONST = 1.0
 IMG_HT = config.depth_img_params['IMG_HT']
 IMG_WDT = config.depth_img_params['IMG_WDT']
 batch_size = config.net_params['batch_size']
@@ -66,7 +69,7 @@ net = global_agg_net.Nets(X1, X2_pooled, phase_rgb, phase, fc_keep_prob)
 output_vectors, weight_summaries = net.build()
 
 # se(3) -> SE(3) for the whole batch
-# output_vectors_ft = tf.map_fn(lambda x:dmap.RV2RM(expected_transforms[x], output_vectors[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+# output_vectors_ft = tf.map_fn(lambda x:transform_functions.RV2RM(expected_transforms[x], output_vectors[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
 # output_vectors_ft = tf.reshape(output_vectors_ft, shape=(batch_size, 6))
 predicted_transforms = tf.map_fn(lambda x:exponential_map_single(output_vectors[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
 
@@ -81,18 +84,28 @@ depth_maps_expected, cloud_exp = tf.map_fn(lambda x:at3._simple_transformer(X2_p
 # photometric loss between predicted and expected transformation
 photometric_loss = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:-10,10:-10] - 40.0)/40.0, (depth_maps_predicted[:,10:-10,10:-10] - 40.0)/40.0))
 
+# point cloud distance between point clouds
+cloud_loss = model_utils.get_cd_loss(cloud_pred, cloud_exp)
 # earth mover's distance between point clouds
-cloud_loss = model_utils.get_emd_loss(cloud_pred, cloud_exp)
+emd_loss = model_utils.get_emd_loss(cloud_pred, cloud_exp)
+# regression loss
+output_vectors_exp = tf.map_fn(lambda x: transform_functions.convert(expected_transforms[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+tr_loss = tf.nn.l2_loss((output_vectors[:3] - output_vectors_exp[:3]))
+ro_loss = tf.nn.l2_loss(output_vectors[3:] - output_vectors_exp[3:])
 
 # final loss term
-train_loss = _ALPHA_CONST*photometric_loss + _BETA_CONST*cloud_loss
+train_loss = _ALPHA_CONST*photometric_loss + _BETA_CONST*cloud_loss + _THETA_CONST * emd_loss + _GAMMA_CONST * tr_loss + _EPSILON_CONST * ro_loss
 
 tf.add_to_collection('losses1', train_loss)
 loss1 = tf.add_n(tf.get_collection('losses1'))
 
 predicted_loss_validation = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:-10,10:-10] - 40.0)/40.0, (depth_maps_predicted[:,10:-10,10:-10] - 40.0)/40.0))
-cloud_loss_validation = model_utils.get_emd_loss(cloud_pred, cloud_exp)
-validation_loss = _ALPHA_CONST * predicted_loss_validation + _BETA_CONST * cloud_loss_validation
+cloud_loss_validation = model_utils.get_cd_loss(cloud_pred, cloud_exp)
+emd_loss_validation = model_utils.get_emd_loss(cloud_pred, cloud_exp)
+output_vectors_exp_val = tf.map_fn(lambda x: transform_functions.convert(expected_transforms[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+tr_loss_validation = tf.nn.l2_loss((output_vectors[:3] - output_vectors_exp_val[:3]))
+ro_loss_validaton = tf.nn.l2_loss(output_vectors[3:] - output_vectors_exp_val[3:])
+validation_loss = _ALPHA_CONST * predicted_loss_validation + _BETA_CONST * cloud_loss_validation + _THETA_CONST * emd_loss_validation + _GAMMA_CONST * tr_loss_validation + _EPSILON_CONST * ro_loss_validaton
 
 # predicted_loss_test = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:-10,10:-10] - 40.0)/40.0, (depth_maps_predicted[:,10:-10,10:-10] - 40.0)/40.0))
 # cloud_loss_test = model_utils.get_emd_loss(cloud_pred, cloud_exp)
@@ -111,15 +124,21 @@ with tf.control_dependencies(update_ops):
 training_summary_1 = tf.summary.scalar('Train_photometric_loss', photometric_loss)
 training_summary_2 = tf.summary.scalar('Train_cloud_loss', cloud_loss)
 training_summary_3 = tf.summary.scalar('Train_loss', train_loss)
+training_summary_4 = tf.summary.scalar('Train_TR_loss', tr_loss)
+training_summary_5 = tf.summary.scalar('Train_RO_loss', ro_loss)
+training_summary_6 = tf.summary.scalar('Train_emd_loss', emd_loss)
 validation_summary_1 = tf.summary.scalar('Validation_photometric_loss', predicted_loss_validation)
 validation_summary_2 = tf.summary.scalar('Validation_cloud_loss', cloud_loss_validation)
 validation_summary_3 = tf.summary.scalar('Validation_loss', validation_loss)
+validation_summary_4 = tf.summary.scalar('Validation_TR_loss', tr_loss_validation)
+validation_summary_5 = tf.summary.scalar('Validation_RO_loss', ro_loss_validaton)
+validation_summary_6 = tf.summary.scalar('Validation_emd_loss', emd_loss_validation)
 # test_summary_1 =  tf.summary.scalar('Test_photometric_loss', predicted_loss_test)
 # test_summary_2 = tf.summary.scalar('Test_cloud_loss', cloud_loss_test)
 # test_summary_3 = tf.summary.scalar('Test_loss', test_loss)
 
-merge_train = tf.summary.merge([training_summary_1] + [training_summary_2] + [training_summary_3] + weight_summaries)
-merge_val = tf.summary.merge([validation_summary_1] + [validation_summary_2] + [validation_summary_3])
+merge_train = tf.summary.merge([training_summary_1] + [training_summary_2] + [training_summary_3] + [training_summary_4] + [training_summary_5] + [training_summary_6] + weight_summaries)
+merge_val = tf.summary.merge([validation_summary_1] + [validation_summary_2] + [validation_summary_3] + [validation_summary_4] + [validation_summary_5] + [validation_summary_6])
 # merge_test = tf.summary.merge([test_summary_1] + [test_summary_2] + [test_summary_3])
 
 saver = tf.train.Saver(var_list=tf.all_variables())
@@ -172,7 +191,7 @@ with tf.Session(config = config_tf) as sess:
             source_container, target_container, source_img_container, target_img_container, transforms_container = ldr.load(part, mode = "train")
             for source_b, target_b, source_img_b, target_img_b, transforms_b in zip(source_container, target_container, source_img_container, target_img_container, transforms_container):
 
-                outputs= sess.run([depth_maps_predicted, depth_maps_expected, train_loss, X2_pooled, train_step, merge_train, predicted_transforms, cloud_loss, photometric_loss, loss1],
+                outputs= sess.run([depth_maps_predicted, depth_maps_expected, train_loss, X2_pooled, train_step, merge_train, predicted_transforms, cloud_loss, photometric_loss, loss1, emd_loss, tr_loss, ro_loss],
                                   feed_dict={X1: source_img_b,
                                              X2: source_b,
                                              depth_maps_target: target_b,
@@ -192,6 +211,7 @@ with tf.Session(config = config_tf) as sess:
                 print('Time: %s     Current Epoch: %d     Current Iteration of Training: %d' % (time.strftime("%Y-%m-%d %H:%M:%S",time.localtime()), epoch, total_iterations_train))
                 print('Loss: %f' % outputs[9])
                 print('Photometric Loss: %f %f\tCloud Loss: %f %f' % (outputs[8], _ALPHA_CONST * outputs[8], outputs[7], _BETA_CONST * outputs[7]))
+                print('Emd Loss: %f %f\tTr Loss: %f\tRo Loss: %f' % (outputs[10], _THETA_CONST * outputs[10], outputs[11], outputs[12]))
 
                 yaw, pitch, roll = [], [], []
                 X, Y, Z = [], [], []
@@ -227,7 +247,7 @@ with tf.Session(config = config_tf) as sess:
 
             for source_b, target_b, source_img_b, target_img_b, transforms_b in zip(source_container, target_container, source_img_container, target_img_container, transforms_container):
 
-                outputs= sess.run([depth_maps_predicted, depth_maps_expected, predicted_loss_validation, X2_pooled, merge_val, cloud_loss_validation, predicted_transforms],
+                outputs= sess.run([depth_maps_predicted, depth_maps_expected, predicted_loss_validation, X2_pooled, merge_val, cloud_loss_validation, predicted_transforms, emd_loss_validation, tr_loss_validation, ro_loss_validaton],
                                   feed_dict={X1: source_img_b,
                                              X2: source_b,
                                              depth_maps_target: target_b,
@@ -247,6 +267,7 @@ with tf.Session(config = config_tf) as sess:
                 print('Time: %s     Current Epoch: %d     Current Iteration of Validation: %d' % (time.strftime("%Y-%m-%d %H:%M:%S",time.localtime()), epoch, total_iterations_validate))
                 print('Loss: %f' % (photo_loss * _ALPHA_CONST + outputs[5] * _BETA_CONST))
                 print('Photometric Loss: %f %f\tCloud Loss: %f %f' % (photo_loss, _ALPHA_CONST * photo_loss, outputs[5], _BETA_CONST * outputs[5]))
+                print('Emd Loss: %f %f\tTr Loss: %f\tRo Loss: %f' % (outputs[7], _THETA_CONST * outputs[7], outputs[8], outputs[9]))
 
                 random_disp = np.random.randint(batch_size)
 

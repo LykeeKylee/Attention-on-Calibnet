@@ -22,6 +22,17 @@ def rot2euler(rot):
     return np.array([theta_z, theta_y, theta_x])
 
 
+def convert(matrix_T):
+    vec_tr = matrix_T[:3, 3]
+    vec_tr = tf.reshape(vec_tr, (1, 3))
+
+    matrix_ro = matrix_T[:3, :3]
+    thetax = tf.atan2(matrix_ro[2:3, 1:2], matrix_ro[2:3, 2:3])
+    thetay = tf.atan2(-matrix_ro[2:3, 1:2], tf.sqrt(matrix_ro[2:3, 1:2] * matrix_ro[2:3, 1:2] + matrix_ro[2:3, 2:3] * matrix_ro[2:3, 2:3]))
+    thetaz = tf.atan2(matrix_ro[1:2, 0:1], matrix_ro[0:1, 0:1])
+    vec_ro = tf.concat([thetax, thetay, thetaz], axis=1)
+    return tf.concat([vec_tr, vec_ro], axis=1)
+
 def contrast(transforms_pred, transforms_exp):
     tran_pred = transforms_pred[:3, 3]
     tran_exp = transforms_exp[:3, 3]
