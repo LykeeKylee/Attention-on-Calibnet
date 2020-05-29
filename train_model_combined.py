@@ -16,13 +16,14 @@ import transform_functions
 
 
 _ALPHA_CONST = 1.0
-_BETA_CONST = 1.0
-_THETA_CONST = 1.0
-_GAMMA_CONST = 100.0
+_BETA_CONST = 1.5
+_THETA_CONST = 2.0
+_GAMMA_CONST = 1.2
 _EPSILON_CONST = 1.0
 IMG_HT = config.depth_img_params['IMG_HT']
 IMG_WDT = config.depth_img_params['IMG_WDT']
 batch_size = config.net_params['batch_size']
+time_step = config.net_params['time_step']
 learning_rate = config.net_params['learning_rate']
 n_epochs = config.net_params['epochs']
 current_epoch = config.net_params['load_epoch']
@@ -30,12 +31,12 @@ current_epoch = config.net_params['load_epoch']
 # 重置默认图
 tf.reset_default_graph()
 
-X1 = tf.placeholder(tf.float32, shape = (batch_size, IMG_HT, IMG_WDT, 3), name = "X1")
-X2 = tf.placeholder(tf.float32, shape = (batch_size, IMG_HT, IMG_WDT, 1), name = "X2")
+X1 = tf.placeholder(tf.float32, shape = (batch_size * time_step, IMG_HT, IMG_WDT, 3), name = "X1")
+X2 = tf.placeholder(tf.float32, shape = (batch_size * time_step, IMG_HT, IMG_WDT, 1), name = "X2")
 # TODO 两张连续的图层叠
 
-depth_maps_target = tf.placeholder(tf.float32, shape = (batch_size, IMG_HT, IMG_WDT, 1), name = "depth_maps_target")
-expected_transforms = tf.placeholder(tf.float32, shape = (batch_size, 4, 4), name = "expected_transforms")
+depth_maps_target = tf.placeholder(tf.float32, shape = (batch_size * time_step, IMG_HT, IMG_WDT, 1), name = "depth_maps_target")
+expected_transforms = tf.placeholder(tf.float32, shape = (batch_size * time_step, 4, 4), name = "expected_transforms")
 
 phase = tf.placeholder(tf.bool, [], name = "phase")
 phase_rgb = tf.placeholder(tf.bool, [], name = "phase_rgb")
@@ -58,28 +59,23 @@ K_mat_scaled = np.array([[fx_scaled,  0.0, cx_scaled],
 K_final = tf.constant(K_mat_scaled, dtype = tf.float32)
 small_transform = tf.constant(config.camera_params['cam_transform_02_inv'], dtype = tf.float32)
 
-X2_pooled = tf.nn.max_pool(X2, ksize=[1,5,5,1], strides=[1,1,1,1], padding="SAME")
-# X2_pooled = X2
+X2_pooled = tf.nn.max_pool(X2, ksize=[1,3,3,1], strides=[1,1,1,1], padding="SAME")
 
-depth_maps_target_pooled = tf.nn.max_pool(depth_maps_target, ksize=[1,5,5,1], strides=[1,1,1,1], padding="SAME")
-# depth_maps_target_pooled = depth_maps_target
-
-# output_vectors, weight_summaries = global_agg_net.End_Net_Out(X1, phase_rgb, X2_pooled, phase, keep_prob)
 net = global_agg_net.Nets(X1, X2_pooled, phase_rgb, phase, fc_keep_prob)
 output_vectors, weight_summaries = net.build()
 
 # se(3) -> SE(3) for the whole batch
 # output_vectors_ft = tf.map_fn(lambda x:transform_functions.RV2RM(expected_transforms[x], output_vectors[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
 # output_vectors_ft = tf.reshape(output_vectors_ft, shape=(batch_size, 6))
-predicted_transforms = tf.map_fn(lambda x:exponential_map_single(output_vectors[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+predicted_transforms = tf.map_fn(lambda x:exponential_map_single(output_vectors[x]), elems=tf.range(0, batch_size * time_step, 1), dtype=tf.float32)
 
 # predicted_transforms = tf.concat([expected_transforms[:, :3, :3], tf.reshape(predicted_transforms[:, :3, 3], shape=[batch_size, 3, 1])], axis=-1)
 
 # transforms depth maps by the predicted transformation
-depth_maps_predicted, cloud_pred = tf.map_fn(lambda x:at3._simple_transformer(X2_pooled[x,:,:,0]*40.0 + 40.0, predicted_transforms[x], K_final, small_transform), elems = tf.range(0, batch_size, 1), dtype = (tf.float32, tf.float32))
+depth_maps_predicted, cloud_pred = tf.map_fn(lambda x:at3._simple_transformer(X2_pooled[x,:,:,0]*40.0 + 40.0, predicted_transforms[x], K_final, small_transform), elems = tf.range(0, batch_size * time_step, 1), dtype = (tf.float32, tf.float32))
 
 # transforms depth maps by the expected transformation
-depth_maps_expected, cloud_exp = tf.map_fn(lambda x:at3._simple_transformer(X2_pooled[x,:,:,0]*40.0 + 40.0, expected_transforms[x], K_final, small_transform), elems = tf.range(0, batch_size, 1), dtype = (tf.float32, tf.float32))
+depth_maps_expected, cloud_exp = tf.map_fn(lambda x:at3._simple_transformer(X2_pooled[x,:,:,0]*40.0 + 40.0, expected_transforms[x], K_final, small_transform), elems = tf.range(0, batch_size * time_step, 1), dtype = (tf.float32, tf.float32))
 
 # photometric loss between predicted and expected transformation
 photometric_loss = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:-10,10:-10] - 40.0)/40.0, (depth_maps_predicted[:,10:-10,10:-10] - 40.0)/40.0))
@@ -94,7 +90,7 @@ tr_loss = tf.nn.l2_loss((output_vectors[:3] - output_vectors_exp[:3]))
 ro_loss = tf.nn.l2_loss(output_vectors[3:] - output_vectors_exp[3:])
 
 # final loss term
-train_loss = _ALPHA_CONST*photometric_loss + _BETA_CONST*cloud_loss + _THETA_CONST * emd_loss + _GAMMA_CONST * tr_loss + _EPSILON_CONST * ro_loss
+train_loss = _ALPHA_CONST*photometric_loss + _GAMMA_CONST * tr_loss + _EPSILON_CONST * ro_loss + _THETA_CONST * emd_loss
 
 tf.add_to_collection('losses1', train_loss)
 loss1 = tf.add_n(tf.get_collection('losses1'))
@@ -105,7 +101,7 @@ emd_loss_validation = model_utils.get_emd_loss(cloud_pred, cloud_exp)
 output_vectors_exp_val = tf.map_fn(lambda x: transform_functions.convert(expected_transforms[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
 tr_loss_validation = tf.nn.l2_loss((output_vectors[:3] - output_vectors_exp_val[:3]))
 ro_loss_validaton = tf.nn.l2_loss(output_vectors[3:] - output_vectors_exp_val[3:])
-validation_loss = _ALPHA_CONST * predicted_loss_validation + _BETA_CONST * cloud_loss_validation + _THETA_CONST * emd_loss_validation + _GAMMA_CONST * tr_loss_validation + _EPSILON_CONST * ro_loss_validaton
+validation_loss = _ALPHA_CONST * predicted_loss_validation + _GAMMA_CONST * tr_loss_validation + _EPSILON_CONST * ro_loss_validaton + _THETA_CONST * emd_loss_validation
 
 # predicted_loss_test = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:-10,10:-10] - 40.0)/40.0, (depth_maps_predicted[:,10:-10,10:-10] - 40.0)/40.0))
 # cloud_loss_test = model_utils.get_emd_loss(cloud_pred, cloud_exp)
@@ -113,7 +109,8 @@ validation_loss = _ALPHA_CONST * predicted_loss_validation + _BETA_CONST * cloud
 
 # non_freeze = [t for t in tf.trainable_variables() if (t.name.startswith('weightW_tr') or t.name.startswith('BatchNorm') or t.name.startswith('nonlocal_block3') or t.name.startswith('weight_11')) and not t.name.startswith('BatchNorm_1')]
 # non_freeze = [t for t in tf.trainable_variables() if (t.name.startswith('weightW_ro') or t.name.startswith('BatchNorm_1') or t.name.startswith('nonlocal_block4') or t.name.startswith('weight_112'))]
-non_freeze = tf.trainable_variables()
+non_freeze = [t for t in tf.trainable_variables() if not t.name.startswith('ResNet') and not t.name.startswith('End')]
+# non_freeze = tf.trainable_variables()
 for t in non_freeze:
     print(t.name)
 update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -137,7 +134,7 @@ validation_summary_6 = tf.summary.scalar('Validation_emd_loss', emd_loss_validat
 # test_summary_2 = tf.summary.scalar('Test_cloud_loss', cloud_loss_test)
 # test_summary_3 = tf.summary.scalar('Test_loss', test_loss)
 
-merge_train = tf.summary.merge([training_summary_1] + [training_summary_2] + [training_summary_3] + [training_summary_4] + [training_summary_5] + [training_summary_6] + weight_summaries)
+merge_train = tf.summary.merge([training_summary_1] + [training_summary_2] + [training_summary_3] + [training_summary_4] + [training_summary_5] + [training_summary_6])
 merge_val = tf.summary.merge([validation_summary_1] + [validation_summary_2] + [validation_summary_3] + [validation_summary_4] + [validation_summary_5] + [validation_summary_6])
 # merge_test = tf.summary.merge([test_summary_1] + [test_summary_2] + [test_summary_3])
 
@@ -171,10 +168,10 @@ with tf.Session(config = config_tf) as sess:
         # saver.restore(sess, checkpoint_path + "/model-%d" % (current_epoch - 1))
 
         # 全部的训练iteration
-        total_iterations_train = int(current_epoch*config.net_params['total_frames_train']/(batch_size))
+        total_iterations_train = int(current_epoch*config.net_params['total_frames_train']/(batch_size * time_step))
 
         # 全部的验证iteration
-        total_iterations_validate = int(current_epoch*config.net_params['total_frames_validation']/(batch_size))
+        total_iterations_validate = int(current_epoch*config.net_params['total_frames_validation']/(batch_size * time_step))
 
         # 全部测试iteration
         # total_iterations_test = int(current_epoch / 10 * config.net_params['total_frames_test']/(batch_size))
@@ -211,7 +208,7 @@ with tf.Session(config = config_tf) as sess:
                 print('Time: %s     Current Epoch: %d     Current Iteration of Training: %d' % (time.strftime("%Y-%m-%d %H:%M:%S",time.localtime()), epoch, total_iterations_train))
                 print('Loss: %f' % outputs[9])
                 print('Photometric Loss: %f %f\tCloud Loss: %f %f' % (outputs[8], _ALPHA_CONST * outputs[8], outputs[7], _BETA_CONST * outputs[7]))
-                print('Emd Loss: %f %f\tTr Loss: %f\tRo Loss: %f' % (outputs[10], _THETA_CONST * outputs[10], outputs[11], outputs[12]))
+                print('Emd Loss: %f %f\tTr Loss: %f %f\tRo Loss: %f %f' % (outputs[10], _THETA_CONST * outputs[10], outputs[11], outputs[11] * _GAMMA_CONST, outputs[12], outputs[12] * _EPSILON_CONST))
 
                 yaw, pitch, roll = [], [], []
                 X, Y, Z = [], [], []
@@ -267,7 +264,7 @@ with tf.Session(config = config_tf) as sess:
                 print('Time: %s     Current Epoch: %d     Current Iteration of Validation: %d' % (time.strftime("%Y-%m-%d %H:%M:%S",time.localtime()), epoch, total_iterations_validate))
                 print('Loss: %f' % (photo_loss * _ALPHA_CONST + outputs[5] * _BETA_CONST))
                 print('Photometric Loss: %f %f\tCloud Loss: %f %f' % (photo_loss, _ALPHA_CONST * photo_loss, outputs[5], _BETA_CONST * outputs[5]))
-                print('Emd Loss: %f %f\tTr Loss: %f\tRo Loss: %f' % (outputs[7], _THETA_CONST * outputs[7], outputs[8], outputs[9]))
+                print('Emd Loss: %f %f\tTr Loss: %f %f\tRo Loss: %f %f' % (outputs[7], _THETA_CONST * outputs[7], outputs[8], _GAMMA_CONST * outputs[8], outputs[9], outputs[9] * _EPSILON_CONST))
 
                 random_disp = np.random.randint(batch_size)
 
