@@ -11,9 +11,13 @@ def dmap_rgb(source_rgb, dmap_exp):
     dmap_exp = np.array(dmap_exp, np.uint8)
 
     dmap_rgb = cv.applyColorMap(dmap_exp, cv.COLORMAP_HOT)
-    mix = cv.addWeighted(source_rgb, 0.7, dmap_rgb, 1, 0)
+    mix = cv.addWeighted(source_rgb, 0.7, dmap_rgb, 2, 0)
     return mix
 
+def get_depth(dmap_exp):
+    dmap_exp = dmap_exp / np.max(dmap_exp) * 255
+    dmap_exp = np.array(dmap_exp, np.uint8)
+    return cv.applyColorMap(dmap_exp, cv.COLORMAP_JET)
 
 def rot2euler(rot):
     theta_x = np.arctan2(rot[2][1], rot[2][2])

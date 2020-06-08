@@ -127,10 +127,10 @@ class Nets:
         """
         weights, summaries = self.End_Net_weights_init()
         layer8 = conv2d_batchnorm_init(input_x, weights[0], name="conv_8", phase=self.depth_phase, stride=[1, 2, 2, 1])
-        nonlocal_block_1 = self.NonLocalBlockT(layer8, 384, scope="nonlocal_block_1")
+        nonlocal_block_1 = self.NonLocalBlock(layer8, 384, scope="nonlocal_block_1")
         print(nonlocal_block_1.shape)
         layer9 = conv2d_batchnorm_init(nonlocal_block_1, weights[1], name="conv_9", phase=self.depth_phase, stride=[1, 2, 2, 1])
-        nonlocal_block_2 = self.NonLocalBlockT(layer9, 256, scope="nonlocal_block_2")
+        nonlocal_block_2 = self.NonLocalBlock(layer9, 256, scope="nonlocal_block_2")
         print(nonlocal_block_2.shape)
         return nonlocal_block_2, summaries
 

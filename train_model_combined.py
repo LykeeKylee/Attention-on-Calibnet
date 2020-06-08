@@ -16,9 +16,9 @@ import transform_functions
 
 
 _ALPHA_CONST = 1.0
-_BETA_CONST = 1.5
+_BETA_CONST = 1.7
 _THETA_CONST = 2.0
-_GAMMA_CONST = 1.2
+_GAMMA_CONST = 100.0
 _EPSILON_CONST = 1.0
 IMG_HT = config.depth_img_params['IMG_HT']
 IMG_WDT = config.depth_img_params['IMG_WDT']
@@ -59,7 +59,7 @@ K_mat_scaled = np.array([[fx_scaled,  0.0, cx_scaled],
 K_final = tf.constant(K_mat_scaled, dtype = tf.float32)
 small_transform = tf.constant(config.camera_params['cam_transform_02_inv'], dtype = tf.float32)
 
-X2_pooled = tf.nn.max_pool(X2, ksize=[1,3,3,1], strides=[1,1,1,1], padding="SAME")
+X2_pooled = tf.nn.max_pool(X2, ksize=[1,5,5,1], strides=[1,1,1,1], padding="SAME")
 
 net = global_agg_net.Nets(X1, X2_pooled, phase_rgb, phase, fc_keep_prob)
 output_vectors, weight_summaries = net.build()
@@ -86,11 +86,14 @@ cloud_loss = model_utils.get_cd_loss(cloud_pred, cloud_exp)
 emd_loss = model_utils.get_emd_loss(cloud_pred, cloud_exp)
 # regression loss
 output_vectors_exp = tf.map_fn(lambda x: transform_functions.convert(expected_transforms[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
-tr_loss = tf.nn.l2_loss((output_vectors[:3] - output_vectors_exp[:3]))
-ro_loss = tf.nn.l2_loss(output_vectors[3:] - output_vectors_exp[3:])
+output_vectors_exp = tf.squeeze(output_vectors_exp)
+tr_loss = tf.norm(output_vectors[:, :3] - output_vectors_exp[:, :3], axis=1)
+ro_loss = tf.norm(output_vectors[:, 3:] - output_vectors_exp[:, 3:], axis=1)
+tr_loss = tf.nn.l2_loss(tr_loss)
+ro_loss = tf.nn.l2_loss(ro_loss)
 
 # final loss term
-train_loss = _ALPHA_CONST*photometric_loss + _GAMMA_CONST * tr_loss + _EPSILON_CONST * ro_loss + _THETA_CONST * emd_loss
+train_loss = _GAMMA_CONST * tr_loss + _THETA_CONST * emd_loss + _ALPHA_CONST * photometric_loss + _EPSILON_CONST * ro_loss
 
 tf.add_to_collection('losses1', train_loss)
 loss1 = tf.add_n(tf.get_collection('losses1'))
@@ -99,9 +102,11 @@ predicted_loss_validation = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:
 cloud_loss_validation = model_utils.get_cd_loss(cloud_pred, cloud_exp)
 emd_loss_validation = model_utils.get_emd_loss(cloud_pred, cloud_exp)
 output_vectors_exp_val = tf.map_fn(lambda x: transform_functions.convert(expected_transforms[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
-tr_loss_validation = tf.nn.l2_loss((output_vectors[:3] - output_vectors_exp_val[:3]))
-ro_loss_validaton = tf.nn.l2_loss(output_vectors[3:] - output_vectors_exp_val[3:])
-validation_loss = _ALPHA_CONST * predicted_loss_validation + _GAMMA_CONST * tr_loss_validation + _EPSILON_CONST * ro_loss_validaton + _THETA_CONST * emd_loss_validation
+tr_loss_validation = tf.norm(output_vectors[:, :3] - output_vectors_exp[:, :3], axis=1)
+ro_loss_validation = tf.norm(output_vectors[:, 3:] - output_vectors_exp[:, 3:], axis=1)
+tr_loss_validation = tf.nn.l2_loss(tr_loss_validation)
+ro_loss_validation = tf.nn.l2_loss(ro_loss_validation)
+validation_loss = _ALPHA_CONST * predicted_loss_validation + _THETA_CONST * emd_loss_validation + _GAMMA_CONST * tr_loss_validation + _EPSILON_CONST * ro_loss_validation
 
 # predicted_loss_test = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:-10,10:-10] - 40.0)/40.0, (depth_maps_predicted[:,10:-10,10:-10] - 40.0)/40.0))
 # cloud_loss_test = model_utils.get_emd_loss(cloud_pred, cloud_exp)
@@ -115,8 +120,9 @@ for t in non_freeze:
     print(t.name)
 update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 with tf.control_dependencies(update_ops):
-    train_step = tf.train.AdamOptimizer(learning_rate = config.net_params['learning_rate'],
-                                    beta1 = config.net_params['beta1']).minimize(train_loss, var_list=non_freeze)
+   opt = tf.train.AdamOptimizer(learning_rate = config.net_params['learning_rate'],
+                                    beta1 = config.net_params['beta1'])
+   train_step = opt.minimize(train_loss, var_list=non_freeze)
 
 training_summary_1 = tf.summary.scalar('Train_photometric_loss', photometric_loss)
 training_summary_2 = tf.summary.scalar('Train_cloud_loss', cloud_loss)
@@ -128,13 +134,14 @@ validation_summary_1 = tf.summary.scalar('Validation_photometric_loss', predicte
 validation_summary_2 = tf.summary.scalar('Validation_cloud_loss', cloud_loss_validation)
 validation_summary_3 = tf.summary.scalar('Validation_loss', validation_loss)
 validation_summary_4 = tf.summary.scalar('Validation_TR_loss', tr_loss_validation)
-validation_summary_5 = tf.summary.scalar('Validation_RO_loss', ro_loss_validaton)
+validation_summary_5 = tf.summary.scalar('Validation_RO_loss', ro_loss_validation)
 validation_summary_6 = tf.summary.scalar('Validation_emd_loss', emd_loss_validation)
+lr = tf.summary.scalar('lr', opt._lr)
 # test_summary_1 =  tf.summary.scalar('Test_photometric_loss', predicted_loss_test)
 # test_summary_2 = tf.summary.scalar('Test_cloud_loss', cloud_loss_test)
 # test_summary_3 = tf.summary.scalar('Test_loss', test_loss)
 
-merge_train = tf.summary.merge([training_summary_1] + [training_summary_2] + [training_summary_3] + [training_summary_4] + [training_summary_5] + [training_summary_6])
+merge_train = tf.summary.merge([training_summary_1] + [training_summary_2] + [training_summary_3] + [training_summary_4] + [training_summary_5] + [training_summary_6] + [lr])
 merge_val = tf.summary.merge([validation_summary_1] + [validation_summary_2] + [validation_summary_3] + [validation_summary_4] + [validation_summary_5] + [validation_summary_6])
 # merge_test = tf.summary.merge([test_summary_1] + [test_summary_2] + [test_summary_3])
 
@@ -194,7 +201,7 @@ with tf.Session(config = config_tf) as sess:
                                              depth_maps_target: target_b,
                                              expected_transforms: transforms_b,
                                              phase: True,
-                                             fc_keep_prob: 0.8,
+                                             fc_keep_prob: 0.7,
                                              phase_rgb: True})
 
                 dmaps_pred = outputs[0]
@@ -227,11 +234,13 @@ with tf.Session(config = config_tf) as sess:
                 print('average_rotation_error(yaw pitch roll): %f° %f° %f°\n' % (np.average(yaw), np.average(pitch), np.average(roll)))
 
                 random_disp = np.random.randint(batch_size)
-                if(total_iterations_train%100 == 0):
+                if(total_iterations_train%250 == 0):
                     mix = transform_functions.dmap_rgb(source_img_b[random_disp], dmaps_pred[random_disp])
                     mix1 = transform_functions.dmap_rgb(source_img_b[random_disp], dmaps_exp[random_disp])
                     # cv.imwrite(config.paths['training_imgs_path'] + "/training_%d_save_%d.png"%(epoch, total_iterations_train), np.vstack((source[random_disp,:,:,0]*40.0 + 40.0, dmaps_pred[random_disp], dmaps_exp[random_disp])))
                     cv.imwrite(config.paths['training_imgs_path'] + "/training_%d_save_%d.png" % (epoch, total_iterations_train), np.vstack((mix, mix1)))
+                    cv.imwrite(config.paths['training_imgs_path'] + "/training_%d_save_%d_d.png" % (
+                    epoch, total_iterations_train), np.vstack((transform_functions.get_depth(dmaps_pred[random_disp]), transform_functions.get_depth(dmaps_exp[random_disp]))))
 
                 total_iterations_train+=1
 
@@ -244,7 +253,7 @@ with tf.Session(config = config_tf) as sess:
 
             for source_b, target_b, source_img_b, target_img_b, transforms_b in zip(source_container, target_container, source_img_container, target_img_container, transforms_container):
 
-                outputs= sess.run([depth_maps_predicted, depth_maps_expected, predicted_loss_validation, X2_pooled, merge_val, cloud_loss_validation, predicted_transforms, emd_loss_validation, tr_loss_validation, ro_loss_validaton],
+                outputs= sess.run([depth_maps_predicted, depth_maps_expected, predicted_loss_validation, X2_pooled, merge_val, cloud_loss_validation, predicted_transforms, emd_loss_validation, tr_loss_validation, ro_loss_validation],
                                   feed_dict={X1: source_img_b,
                                              X2: source_b,
                                              depth_maps_target: target_b,
@@ -291,6 +300,8 @@ with tf.Session(config = config_tf) as sess:
                     mix1 = transform_functions.dmap_rgb(source_img_b[random_disp], dmaps_exp[random_disp])
 
                     cv.imwrite(config.paths['validation_imgs_path'] + "/validation_%d_save_%d.png"%(epoch, total_iterations_validate), np.vstack((mix, mix1)))
+                    cv.imwrite(config.paths['validation_imgs_path'] + "/validation_%d_save_%d_d.png" % (
+                    epoch, total_iterations_validate), np.vstack((transform_functions.get_depth(dmaps_pred[random_disp]), transform_functions.get_depth(dmaps_exp[random_disp]))))
 
         # y, p, r = [], [], []
         # x, y_, z = [], [], []

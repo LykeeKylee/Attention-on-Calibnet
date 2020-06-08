@@ -57,10 +57,10 @@ K_mat_scaled = np.array([[fx_scaled,  0.0, cx_scaled],
 K_final = tf.constant(K_mat_scaled, dtype = tf.float32)
 small_transform = tf.constant(config.camera_params['cam_transform_02_inv'], dtype = tf.float32)
 
-X2_pooled = tf.nn.max_pool(X2, ksize=[1,3,3,1], strides=[1,1,1,1], padding="SAME")
+X2_pooled = tf.nn.max_pool(X2, ksize=[1,5,5,1], strides=[1,1,1,1], padding="SAME")
 # X2_pooled = X2
 
-depth_maps_target_pooled = tf.nn.max_pool(depth_maps_target, ksize=[1,3,3,1], strides=[1,1,1,1], padding="SAME")
+depth_maps_target_pooled = tf.nn.max_pool(depth_maps_target, ksize=[1,5,5,1], strides=[1,1,1,1], padding="SAME")
 # depth_maps_target_pooled = depth_maps_target
 
 # output_vectors, weight_summaries = global_agg_net.End_Net_Out(X1, phase_rgb, X2_pooled, phase, keep_prob)
@@ -97,11 +97,18 @@ loss1 = tf.add_n(tf.get_collection('losses1'))
 predicted_loss_test = tf.nn.l2_loss(tf.subtract((depth_maps_expected[:,10:-10,10:-10] - 40.0)/40.0, (depth_maps_predicted[:,10:-10,10:-10] - 40.0)/40.0))
 cloud_loss_test = model_utils.get_cd_loss(cloud_pred, cloud_exp)
 emd_loss_test = model_utils.get_emd_loss(cloud_pred, cloud_exp)
+output_vectors_exp = tf.map_fn(lambda x: transform_functions.convert(expected_transforms[x]), elems=tf.range(0, batch_size, 1), dtype=tf.float32)
+output_vectors_exp = tf.squeeze(output_vectors_exp)
+tr_loss_test = tf.norm(output_vectors[:, :3] - output_vectors_exp[:, :3], axis=1)
+ro_loss_test = tf.norm(output_vectors[:, 3:] - output_vectors_exp[:, 3:], axis=1)
+tr_loss_test = tf.reduce_sum(tr_loss_test)
+ro_loss_test = tf.reduce_sum(ro_loss_test)
 test_loss = _ALPHA_CONST * predicted_loss_test + _BETA_CONST * cloud_loss_test + emd_loss_test * _THETA_CONST
 
 test_summary_1 =  tf.summary.scalar('Test_photometric_loss', predicted_loss_test)
 test_summary_2 = tf.summary.scalar('Test_cloud_loss', cloud_loss_test)
 test_summary_3 = tf.summary.scalar('Test_loss', test_loss)
+
 
 merge_test = tf.summary.merge([test_summary_1] + [test_summary_2] + [test_summary_3])
 
@@ -185,5 +192,9 @@ with tf.Session(config = config_tf) as sess:
                 dmap_rgb2 = transform_functions.dmap_rgb(source_img_b[random_disp], dmaps_exp[random_disp])
 
                 cv.imwrite(config.paths['test_imgs_path'] + "/test_%d_save_%d.png"%(0, total_iterations_test), np.vstack((dmap_rgb, dmap_rgb2)))
+                cv.imwrite(config.paths['test_imgs_path'] + "/test_%d_save_%d_d.png" % (
+                    0, total_iterations_test), np.vstack((transform_functions.get_depth(dmaps_pred[random_disp]),
+                                                               transform_functions.get_depth(dmaps_exp[random_disp]))))
+
     print('final_translation_error(X Y Z): %fcm %fcm %fcm %fcm' % (np.average(x), np.average(y_), np.average(z), (np.average(x) + np.average(y_) + np.average(z)) / 3))
     print('final_rotation_error(yaw pitch roll): %f° %f° %f° %f°' % (np.average(y), np.average(p), np.average(r), (np.average(y) + np.average(p) + np.average(r)) / 3))
