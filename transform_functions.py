@@ -11,9 +11,13 @@ def dmap_rgb(source_rgb, dmap_exp):
     dmap_exp = np.array(dmap_exp, np.uint8)
 
     dmap_rgb = cv.applyColorMap(dmap_exp, cv.COLORMAP_HOT)
-    mix = cv.addWeighted(source_rgb, 0.7, dmap_rgb, 1, 0)
+    mix = cv.addWeighted(source_rgb, 0.7, dmap_rgb, 2, 0)
     return mix
 
+def get_depth(dmap_exp):
+    dmap_exp = dmap_exp / np.max(dmap_exp) * 255
+    dmap_exp = np.array(dmap_exp, np.uint8)
+    return cv.applyColorMap(dmap_exp, cv.COLORMAP_JET)
 
 def rot2euler(rot):
     theta_x = np.arctan2(rot[2][1], rot[2][2])
@@ -21,6 +25,17 @@ def rot2euler(rot):
     theta_z = np.arctan2(rot[1][0], rot[0][0])
     return np.array([theta_z, theta_y, theta_x])
 
+
+def convert(matrix_T):
+    vec_tr = matrix_T[:3, 3]
+    vec_tr = tf.reshape(vec_tr, (1, 3))
+
+    matrix_ro = matrix_T[:3, :3]
+    thetax = tf.atan2(matrix_ro[2:3, 1:2], matrix_ro[2:3, 2:3])
+    thetay = tf.atan2(-matrix_ro[2:3, 1:2], tf.sqrt(matrix_ro[2:3, 1:2] * matrix_ro[2:3, 1:2] + matrix_ro[2:3, 2:3] * matrix_ro[2:3, 2:3]))
+    thetaz = tf.atan2(matrix_ro[1:2, 0:1], matrix_ro[0:1, 0:1])
+    vec_ro = tf.concat([thetax, thetay, thetaz], axis=1)
+    return tf.concat([vec_tr, vec_ro], axis=1)
 
 def contrast(transforms_pred, transforms_exp):
     tran_pred = transforms_pred[:3, 3]
